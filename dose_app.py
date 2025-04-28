@@ -56,7 +56,35 @@ base = datetime(year, 4, 21, 8, 30)
 
 # ---- Controls ----
 with st.expander("Controls", expanded=True):
-    dose_time = st.number_input("Dose time (h)", min_value=0.0, step=0.1, value=0.0)
+    # Initialize dose_time to last-entry if available
+    if "dose_time" not in st.session_state:
+        if st.session_state.doses:
+            st.session_state.dose_time = max(d["time"] for d in st.session_state.doses)
+        else:
+            st.session_state.dose_time = 0.0
+
+    # Full-width time input, defaulting to session_state.dose_time
+    st.session_state.dose_time = st.number_input(
+        "Dose time (h)",
+        min_value=0.0,
+        step=0.1,
+        value=st.session_state.dose_time,
+        key="dose_time_input",
+    )
+
+    # 2) Two buttons side-by-side under the time input
+    col1, col2, _ = st.columns([1,1,8])
+    with col1:
+        if st.button("Next Booster (+5)"):
+            st.session_state.dose_time += 5.0
+    with col2:
+        if st.button("Next Initial (+19)"):
+            st.session_state.dose_time += 19.0
+
+    # read back to local var
+    dose_time = st.session_state.dose_time
+
+    # the rest of your controls…
     dose_choice = st.selectbox("Dose type", ["Initial (40 mg)", "Booster (8 mg)", "Custom"])
     if dose_choice == "Initial (40 mg)":
         dose_amt = 40.0
@@ -150,18 +178,16 @@ fig.add_trace(go.Scatter(
     x=[base + timedelta(hours=p[0]) for p in peaks],
     y=[p[1] for p in peaks], mode='markers+text', name='Peaks',
     marker=dict(color='red', size=8),
-    text=[f'{p[1]:.1f} mg' for p in peaks],
-    textposition='top center'
+    text=[f'{p[1]:.1f} mg' for p in peaks], textposition='top center'
 ))
 fig.add_trace(go.Scatter(
     x=[base + timedelta(hours=tr[0]) for tr in troughs],
     y=[tr[1] for tr in troughs], mode='markers+text', name='Troughs',
     marker=dict(color='blue', symbol='x', size=8),
-    text=[f'{tr[1]:.1f} mg' for tr in troughs],
-    textposition='bottom center'
+    text=[f'{tr[1]:.1f} mg' for tr in troughs], textposition='bottom center'
 ))
 
-# add horizontal threshold lines
+# add threshold lines
 fig.add_hline(y=60, line_dash="dot", line_color="red",
               annotation_text="Max dose", annotation_position="top right",
               annotation_font_size=14, annotation_font_color="black")
@@ -169,7 +195,7 @@ fig.add_hline(y=32, line_dash="dot", line_color="green",
               annotation_text="Min dose", annotation_position="top right",
               annotation_font_size=14, annotation_font_color="black")
 
-# layout tweaks: background, height, margins, title, text & grid
+# layout
 fig.update_layout(
     title={
         'text': 'Interactive Dose Decay & Steady-State Build-Up',
