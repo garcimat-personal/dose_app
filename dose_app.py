@@ -1,3 +1,4 @@
+import os, json
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,6 +9,19 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 HALF_LIFE_HOURS = 15.0
 DECAY_CONSTANT  = np.log(2) / HALF_LIFE_HOURS
 TIME_STEP       = 0.1  # hours
+
+# where to store the dose list
+DATA_FILE = "doses.json"
+
+def load_doses():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    return []
+
+def save_doses(doses):
+    with open(DATA_FILE, "w") as f:
+        json.dump(doses, f)
 
 def concentration_curve(t0, amt, t):
     conc = np.zeros_like(t)
@@ -27,9 +41,9 @@ def find_peaks_and_troughs(t, total, dose_times):
             troughs.append((t[mask][idx], total[mask][idx]))
     return peaks, troughs
 
-# --- Session state init ---
+# --- Session state init from disk ---
 if "doses" not in st.session_state:
-    st.session_state.doses = []  # each: {"time","amount","meth_value"}
+    st.session_state.doses = load_doses()
 
 st.set_page_config(layout="wide")
 st.title("Dose Decay & Steady-State Build-Up")
@@ -45,56 +59,56 @@ with st.expander("Controls", expanded=True):
         dose_amt = 8.0
     else:
         dose_amt = st.number_input("Custom amount (mg)", min_value=0.0, step=1.0, value=10.0)
+
     apply_meth = st.checkbox("Apply L-Methionine to next dose?")
     meth_amt   = st.number_input("L-Methionine (mg)", min_value=0.0, step=1.0, value=5.0)
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Add Dose"):
-            mval = meth_amt if apply_meth else 0.0
+            # append dictionary so JSON‐serializable
             st.session_state.doses.append({
                 "time": dose_time,
                 "amount": dose_amt,
-                "meth_value": mval
+                "meth_value": meth_amt if apply_meth else 0.0
             })
+            save_doses(st.session_state.doses)
             st.session_state.apply_meth = False
     with col2:
         if st.button("Undo Last Dose"):
             if st.session_state.doses:
                 st.session_state.doses.pop()
+                save_doses(st.session_state.doses)
 
-# ---- Plot ----
+# ---- Plotting ----
 doses = st.session_state.doses
 if not doses:
-    st.info("No doses entered yet. Use the Controls above to add your first dose.")
+    st.info("No doses yet. Add one via the controls above.")
     st.stop()
 
-# Build time axis (in hours since t=0)
+# build time axis
 t0 = min(d["time"] for d in doses)
 t1 = max(d["time"] for d in doses) + 4*HALF_LIFE_HOURS
 t  = np.arange(t0, t1, TIME_STEP)
 
-# Set up figure
-fig, ax = plt.subplots(figsize=(10,5))
+# plot
 total = np.zeros_like(t)
+fig, ax = plt.subplots(figsize=(10,5))
 
-# Process each dose
 for d in doses:
     dt, amt, mval = d["time"], d["amount"], d["meth_value"]
 
-    # subtract residual if flagged
+    # subtract remnant if methionine was flagged
     if mval > 0:
         neg = np.zeros_like(t)
         mask = t >= dt
         neg[mask] = mval * np.exp(-DECAY_CONSTANT * (t[mask] - dt))
         total = np.maximum(total - neg, 0.0)
 
-    # add the dose curve
     curve = concentration_curve(dt, amt, t)
     total += curve
-    ax.plot(t, curve, '--', label=f"{amt:.0f} mg @ {dt:.1f} h")
+    ax.plot(t, curve, '--', label=f"{amt:.0f} mg @ {dt:.1f}h")
 
-# final clip & plot total
 total = np.maximum(total, 0.0)
 ax.plot(t, total, '-', lw=2, color='black', label="Total")
 
@@ -106,14 +120,13 @@ for x, y in peaks:
     ax.text(x, y, f'{y:.1f} mg', ha='center', va='bottom', fontsize='x-small')
 for x, y in troughs:
     ax.plot(x, y, 'bx')
-    ax.text(x, y, f'{y:.1f} mg', ha='center', va='top', fontsize='x-small')
+    ax.text(x, y, f'{y:.1f} mg', ha='center', va='top',    fontsize='x-small')
 
-# --- Time formatting on x-axis ---
-# Base date: today at 8:30 AM
+# --- 12-hour time formatting on x-axis ---
+# Base datetime: today at 8:30 AM
 base = datetime.now().replace(hour=8, minute=30, second=0, microsecond=0)
 
 def hour_to_label(x, pos):
-    # x is hours since t=0
     dt = base + timedelta(hours=x)
     return dt.strftime('%-I:%M %p')
 
