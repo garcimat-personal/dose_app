@@ -43,12 +43,13 @@ def find_peaks_and_troughs(t, total, dose_times):
             troughs.append((t[mask][idx], total[mask][idx]))
     return peaks, troughs
 
-# --- Session state init ---
-if "doses" not in st.session_state:
-    st.session_state.doses = load_doses()
-
+# --- Streamlit setup ---
 st.set_page_config(layout="wide")
 st.title("Dose Decay & Steady-State Build-Up")
+
+# load or initialize doses
+if "doses" not in st.session_state:
+    st.session_state.doses = load_doses()
 
 # Base datetime for clock labels (today at 8:30 AM)
 base = datetime.now().replace(hour=8, minute=30, second=0, microsecond=0)
@@ -77,10 +78,9 @@ with st.expander("Controls", expanded=True):
         "L-Methionine (mg)", min_value=0.0, step=1.0, value=5.0
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Add Dose"):
-            # append dictionary so JSON‐serializable
             st.session_state.doses.append({
                 "time": dose_time,
                 "amount": dose_amt,
@@ -93,6 +93,30 @@ with st.expander("Controls", expanded=True):
             if st.session_state.doses:
                 st.session_state.doses.pop()
                 save_doses(st.session_state.doses)
+    with col3:
+        # Download current state
+        data_str = json.dumps(st.session_state.doses, indent=2)
+        st.download_button(
+            "Download History",
+            data=data_str,
+            file_name="doses.json",
+            mime="application/json"
+        )
+
+    # Upload prior history
+    uploaded = st.file_uploader("Or upload a doses.json to restore", type="json")
+    if uploaded is not None:
+        try:
+            new_doses = json.load(uploaded)
+            # validate structure lightly
+            if isinstance(new_doses, list):
+                st.session_state.doses = new_doses
+                save_doses(new_doses)
+                st.success("History restored from upload.")
+            else:
+                st.error("Invalid format: expected a JSON array.")
+        except Exception:
+            st.error("Failed to parse uploaded JSON.")
 
 # ---- Plotting ----
 doses = st.session_state.doses
@@ -100,13 +124,13 @@ if not doses:
     st.info("No doses yet. Add one via the controls above.")
     st.stop()
 
-# build time axis
+# build numeric time axis
 t0 = min(d["time"] for d in doses)
 t1 = max(d["time"] for d in doses) + 4*HALF_LIFE_HOURS
 t  = np.arange(t0, t1, TIME_STEP)
 
-total = np.zeros_like(t)
 fig, ax = plt.subplots(figsize=(10, 5))
+total = np.zeros_like(t)
 
 for d in doses:
     dt, amt, mval = d["time"], d["amount"], d["meth_value"]
