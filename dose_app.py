@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 
 import streamlit as st
 import numpy as np
@@ -162,26 +162,46 @@ fig.add_trace(go.Scatter(
     text=[f'{tr[1]:.1f} mg' for tr in troughs], textposition='bottom center'
 ))
 
-# layout tweaks: background, height, margins, titles, tickformat
+# add dotted threshold line at 60 mg
+fig.add_hline(
+    y=60,
+    line_dash="dot",
+    line_color="red",
+    annotation_text="Max dose",
+    annotation_position="top right",
+    annotation_font_size=14
+)
+
+# add dotted threshold line at 32 mg
+fig.add_hline(
+    y=32,
+    line_dash="dot",
+    line_color="green",
+    annotation_text="Min dose",
+    annotation_position="top right",
+    annotation_font_size=14
+)
+
+# layout tweaks: background, height, margins, title
 fig.update_layout(
     title={
         'text': 'Interactive Dose Decay & Steady-State Build-Up',
-        'x': 0.5,                    # center horizontally
+        'x': 0.5,
         'xanchor': 'center',
-        'y': 0.95,                   # nudge down a little
+        'y': 0.95,
         'yanchor': 'top',
-        'font': {'size': 24}         # increase title font size
+        'font': {'size': 24}
     },
     height=600,
-    margin=dict(l=40, r=20, t=120, b=40),
+    margin=dict(l=40, r=20, t=140, b=40),
     paper_bgcolor='white',
     plot_bgcolor='rgba(230, 230, 230, 1)',  # light gray
     xaxis=dict(
         title='Clock Time',
         type='date',
-        tickformat='%a<br>%I:%M %p',          # day name + time
+        tickformat='%a<br>%I:%M %p',
         rangeslider=dict(visible=True),
-        range=[x_times[0], x_times[0] + timedelta(days=((t1 - t0) // 24) + 1)]
+        range=[x_times[0], x_times[0] + timedelta(days=((t1 - t0)//24) + 1)]
     ),
     yaxis=dict(title='Amount (mg)')
 )
