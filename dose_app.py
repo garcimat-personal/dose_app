@@ -1,8 +1,10 @@
-import os, json
+import os
+import json
+from datetime import datetime, timedelta
+
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 # --- Pharmacokinetic config ---
@@ -10,7 +12,7 @@ HALF_LIFE_HOURS = 15.0
 DECAY_CONSTANT  = np.log(2) / HALF_LIFE_HOURS
 TIME_STEP       = 0.1  # hours
 
-# where to store the dose list
+# --- Persistence config ---
 DATA_FILE = "doses.json"
 
 def load_doses():
@@ -41,27 +43,39 @@ def find_peaks_and_troughs(t, total, dose_times):
             troughs.append((t[mask][idx], total[mask][idx]))
     return peaks, troughs
 
-# --- Session state init from disk ---
+# --- Session state init ---
 if "doses" not in st.session_state:
     st.session_state.doses = load_doses()
 
 st.set_page_config(layout="wide")
 st.title("Dose Decay & Steady-State Build-Up")
 
+# Base datetime for clock labels (today at 8:30 AM)
+base = datetime.now().replace(hour=8, minute=30, second=0, microsecond=0)
+
 # ---- Controls ----
 with st.expander("Controls", expanded=True):
-    dose_time = st.number_input("Dose time (h)", min_value=0.0, step=0.1, value=0.0)
-    dose_choice = st.selectbox("Dose type",
-        ["Initial (40 mg)", "Booster (8 mg)", "Custom"])
+    dose_time = st.number_input(
+        "Dose time (h)", min_value=0.0, step=0.1, value=0.0
+    )
+
+    dose_choice = st.selectbox(
+        "Dose type",
+        ["Initial (40 mg)", "Booster (8 mg)", "Custom"]
+    )
     if dose_choice == "Initial (40 mg)":
         dose_amt = 40.0
     elif dose_choice == "Booster (8 mg)":
         dose_amt = 8.0
     else:
-        dose_amt = st.number_input("Custom amount (mg)", min_value=0.0, step=1.0, value=10.0)
+        dose_amt = st.number_input(
+            "Custom amount (mg)", min_value=0.0, step=1.0, value=10.0
+        )
 
     apply_meth = st.checkbox("Apply L-Methionine to next dose?")
-    meth_amt   = st.number_input("L-Methionine (mg)", min_value=0.0, step=1.0, value=5.0)
+    meth_amt   = st.number_input(
+        "L-Methionine (mg)", min_value=0.0, step=1.0, value=5.0
+    )
 
     col1, col2 = st.columns(2)
     with col1:
@@ -91,9 +105,8 @@ t0 = min(d["time"] for d in doses)
 t1 = max(d["time"] for d in doses) + 4*HALF_LIFE_HOURS
 t  = np.arange(t0, t1, TIME_STEP)
 
-# plot
 total = np.zeros_like(t)
-fig, ax = plt.subplots(figsize=(10,5))
+fig, ax = plt.subplots(figsize=(10, 5))
 
 for d in doses:
     dt, amt, mval = d["time"], d["amount"], d["meth_value"]
@@ -105,27 +118,33 @@ for d in doses:
         neg[mask] = mval * np.exp(-DECAY_CONSTANT * (t[mask] - dt))
         total = np.maximum(total - neg, 0.0)
 
+    # add the full dose decay curve
     curve = concentration_curve(dt, amt, t)
     total += curve
-    ax.plot(t, curve, '--', label=f"{amt:.0f} mg @ {dt:.1f}h")
 
+    # compute 12-hour clock label
+    clock_label = (base + timedelta(hours=dt)).strftime('%-I:%M %p')
+    legend_label = f"{amt:.0f} mg @ {dt:.1f} h ({clock_label})"
+
+    ax.plot(t, curve, '--', label=legend_label)
+
+# final clip & plot total
 total = np.maximum(total, 0.0)
 ax.plot(t, total, '-', lw=2, color='black', label="Total")
 
 # annotate peaks & troughs
-times_sorted = sorted(d["time"] for d in doses)
-peaks, troughs = find_peaks_and_troughs(t, total, times_sorted)
+sorted_times = sorted(d["time"] for d in doses)
+peaks, troughs = find_peaks_and_troughs(t, total, sorted_times)
 for x, y in peaks:
     ax.plot(x, y, 'ro')
-    ax.text(x, y, f'{y:.1f} mg', ha='center', va='bottom', fontsize='x-small')
+    ax.text(x, y, f'{y:.1f} mg',
+            ha='center', va='bottom', fontsize='x-small')
 for x, y in troughs:
     ax.plot(x, y, 'bx')
-    ax.text(x, y, f'{y:.1f} mg', ha='center', va='top',    fontsize='x-small')
+    ax.text(x, y, f'{y:.1f} mg',
+            ha='center', va='top', fontsize='x-small')
 
-# --- 12-hour time formatting on x-axis ---
-# Base datetime: today at 8:30 AM
-base = datetime.now().replace(hour=8, minute=30, second=0, microsecond=0)
-
+# format x-axis with 12-hour clock labels
 def hour_to_label(x, pos):
     dt = base + timedelta(hours=x)
     return dt.strftime('%-I:%M %p')
