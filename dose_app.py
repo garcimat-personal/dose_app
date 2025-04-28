@@ -131,6 +131,9 @@ with st.expander("Controls", expanded=True):
                 st.error("Invalid JSON structure.")
         except:
             st.error("Error parsing JSON.")
+            
+    # Toggle for legend visibility
+    show_legend = st.checkbox("Show legend", value=True)
 
 # ---- Build data for plotting ----
 doses = st.session_state.doses
@@ -205,6 +208,7 @@ fig.update_layout(
         'pad': {'b': 5}
     },
     font=dict(color='black'),
+    showlegend=show_legend,
     legend=dict(font=dict(color='rgba(0,0,0,0.7)')),
     paper_bgcolor='white',
     plot_bgcolor='rgba(230,230,230,1)',
