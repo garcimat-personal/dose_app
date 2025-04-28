@@ -1,6 +1,8 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 # --- Pharmacokinetic config ---
 HALF_LIFE_HOURS = 15.0
@@ -25,17 +27,16 @@ def find_peaks_and_troughs(t, total, dose_times):
             troughs.append((t[mask][idx], total[mask][idx]))
     return peaks, troughs
 
-# --- Session state initialization ---
+# --- Session state init ---
 if "doses" not in st.session_state:
-    st.session_state.doses = []  # each entry: {"time","amount","meth_value"}
+    st.session_state.doses = []  # each: {"time","amount","meth_value"}
 
 st.set_page_config(layout="wide")
 st.title("Dose Decay & Steady-State Build-Up")
 
-# ---- Controls in main expander ----
+# ---- Controls ----
 with st.expander("Controls", expanded=True):
     dose_time = st.number_input("Dose time (h)", min_value=0.0, step=0.1, value=0.0)
-
     dose_choice = st.selectbox("Dose type",
         ["Initial (40 mg)", "Booster (8 mg)", "Custom"])
     if dose_choice == "Initial (40 mg)":
@@ -44,14 +45,12 @@ with st.expander("Controls", expanded=True):
         dose_amt = 8.0
     else:
         dose_amt = st.number_input("Custom amount (mg)", min_value=0.0, step=1.0, value=10.0)
-
     apply_meth = st.checkbox("Apply L-Methionine to next dose?")
     meth_amt   = st.number_input("L-Methionine (mg)", min_value=0.0, step=1.0, value=5.0)
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Add Dose"):
-            # record dose; meth_amt only if flagged
             mval = meth_amt if apply_meth else 0.0
             st.session_state.doses.append({
                 "time": dose_time,
@@ -64,52 +63,67 @@ with st.expander("Controls", expanded=True):
             if st.session_state.doses:
                 st.session_state.doses.pop()
 
-# ---- Plot or message ----
+# ---- Plot ----
 doses = st.session_state.doses
-
 if not doses:
     st.info("No doses entered yet. Use the Controls above to add your first dose.")
-else:
-    # construct time axis safely now that we know doses is non-empty
-    t0 = min(d["time"] for d in doses)
-    t1 = max(d["time"] for d in doses) + 4*HALF_LIFE_HOURS
-    t  = np.arange(t0, t1, TIME_STEP)
+    st.stop()
 
-    total = np.zeros_like(t)
-    fig, ax = plt.subplots(figsize=(10,5))
+# Build time axis (in hours since t=0)
+t0 = min(d["time"] for d in doses)
+t1 = max(d["time"] for d in doses) + 4*HALF_LIFE_HOURS
+t  = np.arange(t0, t1, TIME_STEP)
 
-    # process each dose chronologically
-    for d in doses:
-        dt, amt, mval = d["time"], d["amount"], d["meth_value"]
+# Set up figure
+fig, ax = plt.subplots(figsize=(10,5))
+total = np.zeros_like(t)
 
-        # subtract decaying negative impulse if mval > 0
-        if mval > 0:
-            neg = np.zeros_like(t)
-            mask = t >= dt
-            neg[mask] = mval * np.exp(-DECAY_CONSTANT*(t[mask] - dt))
-            total = np.maximum(total - neg, 0.0)
+# Process each dose
+for d in doses:
+    dt, amt, mval = d["time"], d["amount"], d["meth_value"]
 
-        # add the full dose decay
-        curve = concentration_curve(dt, amt, t)
-        total += curve
-        ax.plot(t, curve, '--', label=f"{amt:.0f} mg @ {dt:.1f} h")
+    # subtract residual if flagged
+    if mval > 0:
+        neg = np.zeros_like(t)
+        mask = t >= dt
+        neg[mask] = mval * np.exp(-DECAY_CONSTANT * (t[mask] - dt))
+        total = np.maximum(total - neg, 0.0)
 
-    # final clip
-    total = np.maximum(total, 0.0)
-    ax.plot(t, total, '-', lw=2, color='black', label="Total")
+    # add the dose curve
+    curve = concentration_curve(dt, amt, t)
+    total += curve
+    ax.plot(t, curve, '--', label=f"{amt:.0f} mg @ {dt:.1f} h")
 
-    # annotate peaks & troughs
-    sorted_times = sorted(d["time"] for d in doses)
-    peaks, troughs = find_peaks_and_troughs(t, total, sorted_times)
-    for x, y in peaks:
-        ax.plot(x, y, 'ro')
-        ax.text(x, y, f'{y:.1f} mg', ha='center', va='bottom', fontsize='x-small')
-    for x, y in troughs:
-        ax.plot(x, y, 'bx')
-        ax.text(x, y, f'{y:.1f} mg', ha='center', va='top', fontsize='x-small')
+# final clip & plot total
+total = np.maximum(total, 0.0)
+ax.plot(t, total, '-', lw=2, color='black', label="Total")
 
-    ax.set_xlabel("Time (h)")
-    ax.set_ylabel("Amount (mg)")
-    ax.set_title("Dose Decay & Steady-State Build-Up")
-    ax.legend(loc='upper right', fontsize='small')
-    st.pyplot(fig)
+# annotate peaks & troughs
+times_sorted = sorted(d["time"] for d in doses)
+peaks, troughs = find_peaks_and_troughs(t, total, times_sorted)
+for x, y in peaks:
+    ax.plot(x, y, 'ro')
+    ax.text(x, y, f'{y:.1f} mg', ha='center', va='bottom', fontsize='x-small')
+for x, y in troughs:
+    ax.plot(x, y, 'bx')
+    ax.text(x, y, f'{y:.1f} mg', ha='center', va='top', fontsize='x-small')
+
+# --- Time formatting on x-axis ---
+# Base date: today at 8:30 AM
+base = datetime.now().replace(hour=8, minute=30, second=0, microsecond=0)
+
+def hour_to_label(x, pos):
+    # x is hours since t=0
+    dt = base + timedelta(hours=x)
+    return dt.strftime('%-I:%M %p')
+
+ax.xaxis.set_major_locator(MaxNLocator(nbins=8))
+ax.xaxis.set_major_formatter(FuncFormatter(hour_to_label))
+plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
+
+ax.set_xlabel("Clock Time")
+ax.set_ylabel("Amount (mg)")
+ax.set_title("Dose Decay & Steady-State Build-Up")
+ax.legend(loc='upper right', fontsize='small')
+
+st.pyplot(fig)
