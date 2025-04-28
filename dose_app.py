@@ -50,12 +50,9 @@ st.title("Interactive Dose Decay & Steady-State Build-Up")
 if "doses" not in st.session_state:
     st.session_state.doses = load_doses()
 
-# compute this week's Monday at 8:30 AM as the base time
-now = datetime.now()
-monday = (now - timedelta(days=now.weekday())).replace(
-    hour=8, minute=30, second=0, microsecond=0
-)
-base = monday
+# fix t=0 to Monday, April 21, at 8:30 AM of this year
+year = datetime.now().year
+base = datetime(year, 4, 21, 8, 30)
 
 # ---- Controls ----
 with st.expander("Controls", expanded=True):
@@ -88,7 +85,7 @@ with st.expander("Controls", expanded=True):
                 save_doses(st.session_state.doses)
     with c3:
         data_str = json.dumps(st.session_state.doses, indent=2)
-        st.download_button("Download History", data_str, "doses.json", "application/json")
+        st.download_button("Download", data_str, "doses.json", "application/json")
     with c4:
         if st.button("Clear All Doses"):
             st.session_state.doses = []
@@ -131,12 +128,12 @@ for d in doses:
         total = np.maximum(total - neg, 0.0)
     curve = concentration_curve(dt, amt, t)
     total += curve
-    clock_lbl = (base + timedelta(hours=dt)).strftime('%a %-I:%M %p')
+    clock_lbl = (base + timedelta(hours=dt)).strftime('%m/%d %-I:%M %p')
     legend_lbl = f"{amt:.0f} mg @ {dt:.1f}h ({clock_lbl})"
     fig.add_trace(go.Scatter(
         x=x_times, y=curve, mode='lines',
         name=legend_lbl, line=dict(dash='dash'),
-        hovertemplate='%{y:.1f} mg at %{x|%a %-I:%M %p}<extra></extra>'
+        hovertemplate='%{y:.1f} mg at %{x|%m/%d %I:%M %p}<extra></extra>'
     ))
 
 # plot total
@@ -144,7 +141,7 @@ total = np.maximum(total, 0.0)
 fig.add_trace(go.Scatter(
     x=x_times, y=total, mode='lines',
     name='Total', line=dict(width=3, color='black'),
-    hovertemplate='%{y:.1f} mg at %{x|%a %-I:%M %p}<extra></extra>'
+    hovertemplate='%{y:.1f} mg at %{x|%m/%d %I:%M %p}<extra></extra>'
 ))
 
 # peaks & troughs
@@ -153,57 +150,59 @@ fig.add_trace(go.Scatter(
     x=[base + timedelta(hours=p[0]) for p in peaks],
     y=[p[1] for p in peaks], mode='markers+text', name='Peaks',
     marker=dict(color='red', size=8),
-    text=[f'{p[1]:.1f} mg' for p in peaks], textposition='top center'
+    text=[f'{p[1]:.1f} mg' for p in peaks],
+    textposition='top center'
 ))
 fig.add_trace(go.Scatter(
     x=[base + timedelta(hours=tr[0]) for tr in troughs],
     y=[tr[1] for tr in troughs], mode='markers+text', name='Troughs',
     marker=dict(color='blue', symbol='x', size=8),
-    text=[f'{tr[1]:.1f} mg' for tr in troughs], textposition='bottom center'
+    text=[f'{tr[1]:.1f} mg' for tr in troughs],
+    textposition='bottom center'
 ))
 
-# add dotted threshold line at 60 mg
-fig.add_hline(
-    y=60,
-    line_dash="dot",
-    line_color="red",
-    annotation_text="Max dose",
-    annotation_position="top right",
-    annotation_font_size=14
-)
+# add horizontal threshold lines
+fig.add_hline(y=60, line_dash="dot", line_color="red",
+              annotation_text="Max dose", annotation_position="top right",
+              annotation_font_size=14, annotation_font_color="black")
+fig.add_hline(y=32, line_dash="dot", line_color="green",
+              annotation_text="Min dose", annotation_position="top right",
+              annotation_font_size=14, annotation_font_color="black")
 
-# add dotted threshold line at 32 mg
-fig.add_hline(
-    y=32,
-    line_dash="dot",
-    line_color="green",
-    annotation_text="Min dose",
-    annotation_position="top right",
-    annotation_font_size=14
-)
-
-# layout tweaks: background, height, margins, title
+# layout tweaks: background, height, margins, title, text & grid
 fig.update_layout(
     title={
         'text': 'Interactive Dose Decay & Steady-State Build-Up',
-        'x': 0.5,
-        'xanchor': 'center',
-        'y': 0.95,
-        'yanchor': 'top',
-        'font': {'size': 24}
+        'x': 0.435, 'xanchor': 'center',
+        'y': 0.95, 'yanchor': 'top',
+        'font': {'size': 30, 'color': 'black'},
+        'pad': {'b': 5}
     },
-    height=600,
-    margin=dict(l=40, r=20, t=140, b=40),
+    font=dict(color='black'),
+    legend=dict(font=dict(color='rgba(0,0,0,0.7)')),
     paper_bgcolor='white',
-    plot_bgcolor='rgba(230, 230, 230, 1)',  # light gray
+    plot_bgcolor='rgba(230,230,230,1)',
+    height=800,
+    margin=dict(l=40, r=20, t=100, b=40),
+    dragmode='pan',
     xaxis=dict(
         title='Clock Time',
+        title_font=dict(color='black'),
+        tickfont=dict(color='black'),
+        gridcolor='rgba(0,0,0,0.1)',
+        showgrid=True,
         type='date',
-        tickformat='%a<br>%I:%M %p',
+        tickformat='%a (%m/%d)<br>%I:%M %p',
         rangeslider=dict(visible=True),
         range=[x_times[0], x_times[0] + timedelta(days=((t1 - t0)//24) + 1)]
     ),
-    yaxis=dict(title='Amount (mg)')
+    yaxis=dict(
+        title='Amount (mg)',
+        title_font=dict(color='black'),
+        tickfont=dict(color='black'),
+        gridcolor='rgba(0,0,0,0.1)',
+        showgrid=True
+    )
 )
 
 st.plotly_chart(fig, use_container_width=True)
