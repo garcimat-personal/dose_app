@@ -78,7 +78,8 @@ with st.expander("Controls", expanded=True):
         "L-Methionine (mg)", min_value=0.0, step=1.0, value=5.0
     )
 
-    col1, col2, col3 = st.columns(3)
+    # Four columns: Add, Undo, Download, Clear
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         if st.button("Add Dose"):
             st.session_state.doses.append({
@@ -94,7 +95,6 @@ with st.expander("Controls", expanded=True):
                 st.session_state.doses.pop()
                 save_doses(st.session_state.doses)
     with col3:
-        # Download current state
         data_str = json.dumps(st.session_state.doses, indent=2)
         st.download_button(
             "Download History",
@@ -102,13 +102,16 @@ with st.expander("Controls", expanded=True):
             file_name="doses.json",
             mime="application/json"
         )
+    with col4:
+        if st.button("Clear All Doses"):
+            st.session_state.doses = []
+            save_doses(st.session_state.doses)
 
-    # Upload prior history
+    # Upload prior history (below the four buttons)
     uploaded = st.file_uploader("Or upload a doses.json to restore", type="json")
     if uploaded is not None:
         try:
             new_doses = json.load(uploaded)
-            # validate structure lightly
             if isinstance(new_doses, list):
                 st.session_state.doses = new_doses
                 save_doses(new_doses)
@@ -129,6 +132,7 @@ t0 = min(d["time"] for d in doses)
 t1 = max(d["time"] for d in doses) + 4*HALF_LIFE_HOURS
 t  = np.arange(t0, t1, TIME_STEP)
 
+# plotting
 fig, ax = plt.subplots(figsize=(10, 5))
 total = np.zeros_like(t)
 
@@ -161,12 +165,10 @@ sorted_times = sorted(d["time"] for d in doses)
 peaks, troughs = find_peaks_and_troughs(t, total, sorted_times)
 for x, y in peaks:
     ax.plot(x, y, 'ro')
-    ax.text(x, y, f'{y:.1f} mg',
-            ha='center', va='bottom', fontsize='x-small')
+    ax.text(x, y, f'{y:.1f} mg', ha='center', va='bottom', fontsize='x-small')
 for x, y in troughs:
     ax.plot(x, y, 'bx')
-    ax.text(x, y, f'{y:.1f} mg',
-            ha='center', va='top', fontsize='x-small')
+    ax.text(x, y, f'{y:.1f} mg', ha='center', va='top', fontsize='x-small')
 
 # format x-axis with 12-hour clock labels
 def hour_to_label(x, pos):
