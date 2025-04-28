@@ -119,7 +119,7 @@ t = np.arange(t0, t1, TIME_STEP)
 x_times = [base + timedelta(hours=hh) for hh in t]
 
 total = np.zeros_like(t)
-fig = go.Figure()
+fig = go.Figure(layout=dict(template='plotly_white', font=dict(color='black')))
 
 # plot each dose curve
 for d in doses:
@@ -136,7 +136,7 @@ for d in doses:
     fig.add_trace(go.Scatter(
         x=x_times, y=curve, mode='lines',
         name=legend_lbl, line=dict(dash='dash'),
-        hovertemplate='%{y:.1f} mg at %{x|%a %-I:%M %p}<extra></extra>'
+        hovertemplate='<b>%{y:.1f} mg</b><br>%{x|%a %-I:%M %p}<extra></extra>'
     ))
 
 # plot total
@@ -144,7 +144,7 @@ total = np.maximum(total, 0.0)
 fig.add_trace(go.Scatter(
     x=x_times, y=total, mode='lines',
     name='Total', line=dict(width=3, color='black'),
-    hovertemplate='%{y:.1f} mg at %{x|%a %-I:%M %p}<extra></extra>'
+    hovertemplate='<b>%{y:.1f} mg</b><br>%{x|%a %-I:%M %p}<extra></extra>'
 ))
 
 # peaks & troughs
@@ -168,8 +168,8 @@ fig.add_hline(
     line_dash="dot",
     line_color="red",
     annotation_text="Max dose",
-    annotation_position="top right",
-    annotation_font_size=14
+    annotation_font=dict(color='black'),
+    annotation_position="top right"
 )
 
 # add dotted threshold line at 32 mg
@@ -178,32 +178,35 @@ fig.add_hline(
     line_dash="dot",
     line_color="green",
     annotation_text="Min dose",
-    annotation_position="top right",
-    annotation_font_size=14
+    annotation_font=dict(color='black'),
+    annotation_position="top right"
 )
 
-# layout tweaks: background, height, margins, title
+# layout tweaks: background, height, margins, title, axes
 fig.update_layout(
     title={
         'text': 'Interactive Dose Decay & Steady-State Build-Up',
-        'x': 0.5,
-        'xanchor': 'center',
-        'y': 0.95,
-        'yanchor': 'top',
-        'font': {'size': 24}
+        'x': 0.5, 'xanchor': 'center',
+        'y': 0.95, 'yanchor': 'top',
+        'font': {'size': 24, 'color': 'black'}
     },
-    height=600,
+    height=650,
     margin=dict(l=40, r=20, t=140, b=40),
     paper_bgcolor='white',
-    plot_bgcolor='rgba(230, 230, 230, 1)',  # light gray
+    plot_bgcolor='rgba(240, 240, 240, 1)',
     xaxis=dict(
-        title='Clock Time',
+        title=dict(text='Clock Time', font=dict(color='black')),
         type='date',
         tickformat='%a<br>%I:%M %p',
+        tickfont=dict(color='black'),
         rangeslider=dict(visible=True),
         range=[x_times[0], x_times[0] + timedelta(days=((t1 - t0)//24) + 1)]
     ),
-    yaxis=dict(title='Amount (mg)')
+    yaxis=dict(
+        title=dict(text='Amount (mg)', font=dict(color='black')),
+        tickfont=dict(color='black')
+    ),
+    legend=dict(font=dict(color='black'), orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
 )
 
 st.plotly_chart(fig, use_container_width=True)
