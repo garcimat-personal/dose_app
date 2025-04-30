@@ -10,7 +10,7 @@ import plotly.graph_objs as go
 # --- Pharmacokinetic config ---
 HALF_LIFE_HOURS = 15.0
 DECAY_CONSTANT  = np.log(2) / HALF_LIFE_HOURS
-TIME_STEP       = 0.1   # hours
+TIME_STEP       = 0.1  # hours
 
 # --- Persistence config ---
 DATA_FILE = "doses.json"
@@ -47,18 +47,22 @@ def find_peaks_and_troughs(t, total, dose_times):
 st.set_page_config(layout="wide")
 st.title("Interactive Dose Decay & Steady-State Build-Up")
 
-# load or init persisted doses and undo stack
+# load or init
 if "doses" not in st.session_state:
     st.session_state.doses = load_doses()
 if "deleted_stack" not in st.session_state:
     st.session_state.deleted_stack = []
 
-# fix t=0 to Monday, April 21, at 8:30 AM of this year
+# base datetime for t=0: Monday April 21 at 8:30
 year = datetime.now().year
 base = datetime(year, 4, 21, 8, 30)
 
+# Mobile toggle
+mobile = st.checkbox("Mobile view")
+
 # ---- Controls ----
-with st.expander("Controls", expanded=True):
+with st.expander("Controls", expanded=not mobile):
+    # initialize dose_time
     if "dose_time" not in st.session_state:
         st.session_state.dose_time = max((d["Time"] for d in st.session_state.doses), default=0.0)
 
@@ -67,23 +71,36 @@ with st.expander("Controls", expanded=True):
         value=st.session_state.dose_time,
         min_value=0.0, step=0.1
     )
-    c1, c2, _, c5 = st.columns([1,1,6,1])
-    with c1:
+    dose_time = st.session_state.dose_time
+
+    if mobile:
         if st.button("Next Booster (+5h)"):
             st.session_state.dose_time += 5.0
-    with c2:
         if st.button("Next Initial (+19h)"):
             st.session_state.dose_time += 19.0
-    with c5:
         if st.button("Undo Delete"):
             if st.session_state.deleted_stack:
                 restored = st.session_state.deleted_stack.pop()
                 st.session_state.doses.extend(restored)
                 st.session_state.doses.sort(key=lambda d: d["Time"])
                 save_doses(st.session_state.doses)
+    else:
+        c1, c2, _, c5 = st.columns([1,1,6,1])
+        with c1:
+            if st.button("Next Booster (+5h)"):
+                st.session_state.dose_time += 5.0
+        with c2:
+            if st.button("Next Initial (+19h)"):
+                st.session_state.dose_time += 19.0
+        with c5:
+            if st.button("Undo Delete"):
+                if st.session_state.deleted_stack:
+                    restored = st.session_state.deleted_stack.pop()
+                    st.session_state.doses.extend(restored)
+                    st.session_state.doses.sort(key=lambda d: d["Time"])
+                    save_doses(st.session_state.doses)
 
-    dose_time = st.session_state.dose_time
-
+    # dose amount selection
     dose_choice = st.selectbox("Dose type", ["Initial (40 mg)", "Booster (8 mg)", "Custom"])
     if dose_choice == "Initial (40 mg)":
         dose_amt = 40.0
@@ -95,8 +112,7 @@ with st.expander("Controls", expanded=True):
     apply_meth = st.checkbox("Apply L-Methionine to next dose?")
     meth_amt   = st.number_input("L-Methionine (mg)", min_value=0.0, step=1.0, value=5.0)
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
+    if mobile:
         if st.button("Add Dose"):
             st.session_state.doses.append({
                 "Time": dose_time,
@@ -104,23 +120,45 @@ with st.expander("Controls", expanded=True):
                 "L-Methionine Value": meth_amt if apply_meth else 0.0
             })
             save_doses(st.session_state.doses)
-    with c2:
         if st.button("Undo Last Dose"):
             if st.session_state.doses:
                 st.session_state.doses.pop()
                 save_doses(st.session_state.doses)
-    with c3:
         st.download_button(
             "Download History",
             json.dumps(st.session_state.doses, indent=2),
-            "doses.json",
-            "application/json"
+            "doses.json", "application/json"
         )
-    with c4:
         if st.button("Clear All Doses"):
             st.session_state.deleted_stack.clear()
             st.session_state.doses.clear()
             save_doses(st.session_state.doses)
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            if st.button("Add Dose"):
+                st.session_state.doses.append({
+                    "Time": dose_time,
+                    "Amount": dose_amt,
+                    "L-Methionine Value": meth_amt if apply_meth else 0.0
+                })
+                save_doses(st.session_state.doses)
+        with c2:
+            if st.button("Undo Last Dose"):
+                if st.session_state.doses:
+                    st.session_state.doses.pop()
+                    save_doses(st.session_state.doses)
+        with c3:
+            st.download_button(
+                "Download History",
+                json.dumps(st.session_state.doses, indent=2),
+                "doses.json", "application/json"
+            )
+        with c4:
+            if st.button("Clear All Doses"):
+                st.session_state.deleted_stack.clear()
+                st.session_state.doses.clear()
+                save_doses(st.session_state.doses)
 
     uploaded = st.file_uploader("Upload doses.json to restore", type="json")
     if uploaded is not None:
@@ -141,17 +179,13 @@ with st.expander("Controls", expanded=True):
 
 # ---- Editable dose table ----
 if show_edit:
-    # build DataFrame
     df = pd.DataFrame(st.session_state.doses)[["Time","Amount","L-Methionine Value"]].astype(float)
-    # human-readable label
     df.insert(1, "Date & Time",
               df["Time"].apply(lambda x:
                   (base + timedelta(hours=x)).strftime("%a %m/%d %I:%M %p")
               ))
-    # delete checkbox
     df.insert(0, "Delete?", False)
 
-    # hide the raw Time column
     column_config = {
         "Time": {"hidden": True},
         "Delete?": {"type": "boolean"},
@@ -165,12 +199,11 @@ if show_edit:
         column_config=column_config,
         num_rows="dynamic",
         key="dose_editor",
-        use_container_width=True
+        use_container_width=True,
+        height=(300 if mobile else 600)
     )
 
-    # rebuild doses & deleted stack
-    kept = []
-    deleted = []
+    new_list, deleted = [], []
     for _, row in edited.iterrows():
         if row["Delete?"]:
             deleted.append({
@@ -179,7 +212,6 @@ if show_edit:
                 "L-Methionine Value": float(row["L-Methionine Value"])
             })
         else:
-            # recalc Time from edited Date & Time
             parts = row["Date & Time"].split()
             mon, day = map(int, parts[1].split("/"))
             hour, minute = map(int, parts[2].split(":"))
@@ -189,10 +221,9 @@ if show_edit:
             elif ampm == "AM" and hour == 12:
                 hour = 0
             dt_new = base.replace(month=mon, day=day, hour=hour, minute=minute)
-            hours_offset = max((dt_new - base).total_seconds()/3600.0, 0.0)
-
-            kept.append({
-                "Time": hours_offset,
+            offset = max((dt_new - base).total_seconds()/3600.0, 0.0)
+            new_list.append({
+                "Time": offset,
                 "Amount": float(row["Amount"]),
                 "L-Methionine Value": float(row["L-Methionine Value"])
             })
@@ -200,11 +231,11 @@ if show_edit:
     if deleted:
         st.session_state.deleted_stack.append(deleted)
 
-    if kept != st.session_state.doses:
-        st.session_state.doses = kept
-        save_doses(kept)
+    if new_list != st.session_state.doses:
+        st.session_state.doses = new_list
+        save_doses(new_list)
 
-# ---- Build data for plotting ----
+# ---- Plotting ----
 doses = st.session_state.doses
 if not doses:
     st.info("No doses yet.")
@@ -222,19 +253,18 @@ for d in doses:
     dt, amt, mval = d["Time"], d["Amount"], d["L-Methionine Value"]
     if mval > 0:
         total = np.maximum(total - concentration_curve(dt, mval, t), 0.0)
-    total += concentration_curve(dt, amt, t)
+    curve = concentration_curve(dt, amt, t)
+    total += curve
     clock_lbl = (base + timedelta(hours=dt)).strftime("%a (%m/%d) %I:%M %p")
 
     fig.add_trace(go.Scatter(
-        x=x_times, y=concentration_curve(dt, amt, t),
-        mode='lines', line=dict(dash='dash'),
+        x=x_times, y=curve, mode='lines', line=dict(dash='dash'),
         name=f"{amt:.0f} mg @ {dt:.1f}h ({clock_lbl})",
         hovertemplate='%{y:.1f} mg at %{x|%a %m/%d %I:%M %p}<extra></extra>'
     ))
 
 fig.add_trace(go.Scatter(
-    x=x_times, y=total,
-    mode='lines', line=dict(width=3, color='black'),
+    x=x_times, y=total, mode='lines', line=dict(width=3, color='black'),
     name='Total',
     hovertemplate='%{y:.1f} mg at %{x|%a %m/%d %I:%M %p}<extra></extra>'
 ))
@@ -242,16 +272,16 @@ fig.add_trace(go.Scatter(
 peaks, troughs = find_peaks_and_troughs(t, total, sorted(d["Time"] for d in doses))
 for x_val, y_val in peaks:
     fig.add_trace(go.Scatter(
-        x=[base+timedelta(hours=x_val)], y=[y_val],
+        x=[base + timedelta(hours=x_val)], y=[y_val],
         mode='markers+text', marker=dict(color='red', size=8),
-        text=[f"{y_val:.1f} mg"], textposition='top center', name='Peak',
+        text=[f"{y_val:.1f} mg"], textposition='top center',
         showlegend=False
     ))
 for x_val, y_val in troughs:
     fig.add_trace(go.Scatter(
-        x=[base+timedelta(hours=x_val)], y=[y_val],
+        x=[base + timedelta(hours=x_val)], y=[y_val],
         mode='markers+text', marker=dict(symbol='x', color='blue', size=8),
-        text=[f"{y_val:.1f} mg"], textposition='bottom center', name='Trough',
+        text=[f"{y_val:.1f} mg"], textposition='bottom center',
         showlegend=False
     ))
 
@@ -274,8 +304,7 @@ fig.update_layout(
     showlegend=show_legend,
     paper_bgcolor='white', plot_bgcolor='rgba(230,230,230,1)',
     height=800, margin=dict(l=40,r=20,t=100,b=40), dragmode='pan',
-    xaxis=dict(type='date', tickformat='%a (%m/%d)<br>%I:%M %p',
-               rangeslider=dict(visible=True)),
+    xaxis=dict(type='date', tickformat='%a (%m/%d)<br>%I:%M %p', rangeslider=dict(visible=True)),
     yaxis=dict(title='Amount (mg)')
 )
 
