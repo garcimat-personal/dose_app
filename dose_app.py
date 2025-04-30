@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 import numpy as np
+import pandas as pd
 import plotly.graph_objs as go
 
 # --- Pharmacokinetic config ---
@@ -56,35 +57,27 @@ base = datetime(year, 4, 21, 8, 30)
 
 # ---- Controls ----
 with st.expander("Controls", expanded=True):
-    # Initialize dose_time to last-entry if available
+    # initialize default time to last dose if present
     if "dose_time" not in st.session_state:
-        if st.session_state.doses:
-            st.session_state.dose_time = max(d["time"] for d in st.session_state.doses)
-        else:
-            st.session_state.dose_time = 0.0
+        st.session_state.dose_time = max((d["Time"] for d in st.session_state.doses), default=0.0)
 
-    # Full-width time input, defaulting to session_state.dose_time
+    # Dose time input
     st.session_state.dose_time = st.number_input(
         "Dose time (h)",
-        min_value=0.0,
-        step=0.1,
         value=st.session_state.dose_time,
-        key="dose_time_input",
+        min_value=0.0,
+        step=0.1
     )
-
-    # 2) Two buttons side-by-side under the time input
     col1, col2, _ = st.columns([1,1,8])
     with col1:
-        if st.button("Next Booster (+5)"):
+        if st.button("Next Booster (+5h)"):
             st.session_state.dose_time += 5.0
     with col2:
-        if st.button("Next Initial (+19)"):
+        if st.button("Next Initial (+19h)"):
             st.session_state.dose_time += 19.0
-
-    # read back to local var
     dose_time = st.session_state.dose_time
 
-    # the rest of your controls…
+    # Dose amount
     dose_choice = st.selectbox("Dose type", ["Initial (40 mg)", "Booster (8 mg)", "Custom"])
     if dose_choice == "Initial (40 mg)":
         dose_amt = 40.0
@@ -93,32 +86,39 @@ with st.expander("Controls", expanded=True):
     else:
         dose_amt = st.number_input("Custom amount (mg)", min_value=0.0, step=1.0, value=10.0)
 
+    # L-Methionine
     apply_meth = st.checkbox("Apply L-Methionine to next dose?")
     meth_amt   = st.number_input("L-Methionine (mg)", min_value=0.0, step=1.0, value=5.0)
 
+    # Action buttons
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         if st.button("Add Dose"):
             st.session_state.doses.append({
-                "time": dose_time,
-                "amount": dose_amt,
-                "meth_value": meth_amt if apply_meth else 0.0
+                "Time": dose_time,
+                "Amount": dose_amt,
+                "L-Methionine Value": meth_amt if apply_meth else 0.0
             })
             save_doses(st.session_state.doses)
-            st.session_state.apply_meth = False
+            st.session_state.dose_time = dose_time
     with c2:
         if st.button("Undo Last Dose"):
             if st.session_state.doses:
                 st.session_state.doses.pop()
                 save_doses(st.session_state.doses)
     with c3:
-        data_str = json.dumps(st.session_state.doses, indent=2)
-        st.download_button("Download", data_str, "doses.json", "application/json")
+        st.download_button(
+            "Download History",
+            json.dumps(st.session_state.doses, indent=2),
+            "doses.json",
+            "application/json"
+        )
     with c4:
         if st.button("Clear All Doses"):
             st.session_state.doses = []
             save_doses(st.session_state.doses)
 
+    # Upload
     uploaded = st.file_uploader("Upload doses.json to restore", type="json")
     if uploaded:
         try:
@@ -131,9 +131,36 @@ with st.expander("Controls", expanded=True):
                 st.error("Invalid JSON structure.")
         except:
             st.error("Error parsing JSON.")
-            
-    # Toggle for legend visibility
+
+    # Toggles
     show_legend = st.checkbox("Show legend", value=True)
+    show_edit   = st.checkbox("Edit doses table")
+
+# ---- Editable dose table (conditional) ----
+if show_edit:
+    df = pd.DataFrame(st.session_state.doses)[["Time","Amount","L-Methionine Value"]].astype(float)
+    df.insert(
+        1,
+        "Date & Time",
+        df["Time"]
+          .apply(lambda x: (base + timedelta(hours=x)).strftime("%a %m/%d %-I:%M %p"))
+    )
+    edited = st.data_editor(
+        df,
+        num_rows="dynamic",
+        key="dose_editor",
+        use_container_width=True
+    )
+    if not edited[["Time","Amount","L-Methionine Value"]].equals(df[["Time","Amount","L-Methionine Value"]]):
+        new_list = []
+        for _, row in edited.iterrows():
+            new_list.append({
+                "Time": float(row["Time"]),
+                "Amount": float(row["Amount"]),
+                "L-Methionine Value": float(row["L-Methionine Value"])
+            })
+        st.session_state.doses = new_list
+        save_doses(new_list)
 
 # ---- Build data for plotting ----
 doses = st.session_state.doses
@@ -141,8 +168,8 @@ if not doses:
     st.info("No doses yet. Use the controls above.")
     st.stop()
 
-t0 = min(d["time"] for d in doses)
-t1 = max(d["time"] for d in doses) + 4 * HALF_LIFE_HOURS
+t0 = min(d["Time"] for d in doses)
+t1 = max(d["Time"] for d in doses) + 4 * HALF_LIFE_HOURS
 t = np.arange(t0, t1, TIME_STEP)
 x_times = [base + timedelta(hours=hh) for hh in t]
 
@@ -151,7 +178,7 @@ fig = go.Figure()
 
 # plot each dose curve
 for d in doses:
-    dt, amt, mval = d["time"], d["amount"], d["meth_value"]
+    dt, amt, mval = d["Time"], d["Amount"], d["L-Methionine Value"]
     if mval > 0:
         neg = np.zeros_like(t)
         mask = t >= dt
@@ -159,12 +186,12 @@ for d in doses:
         total = np.maximum(total - neg, 0.0)
     curve = concentration_curve(dt, amt, t)
     total += curve
-    clock_lbl = (base + timedelta(hours=dt)).strftime('%m/%d %-I:%M %p')
+    clock_lbl = (base + timedelta(hours=dt)).strftime('%a (%m/%d) %-I:%M %p')
     legend_lbl = f"{amt:.0f} mg @ {dt:.1f}h ({clock_lbl})"
     fig.add_trace(go.Scatter(
         x=x_times, y=curve, mode='lines',
         name=legend_lbl, line=dict(dash='dash'),
-        hovertemplate='%{y:.1f} mg at %{x|%m/%d %I:%M %p}<extra></extra>'
+        hovertemplate='%{y:.1f} mg at %{x|%a %m/%d %I:%M %p}<extra></extra>'
     ))
 
 # plot total
@@ -172,11 +199,11 @@ total = np.maximum(total, 0.0)
 fig.add_trace(go.Scatter(
     x=x_times, y=total, mode='lines',
     name='Total', line=dict(width=3, color='black'),
-    hovertemplate='%{y:.1f} mg at %{x|%m/%d %I:%M %p}<extra></extra>'
+    hovertemplate='%{y:.1f} mg at %{x|%a %m/%d %I:%M %p}<extra></extra>'
 ))
 
 # peaks & troughs
-peaks, troughs = find_peaks_and_troughs(t, total, sorted(d["time"] for d in doses))
+peaks, troughs = find_peaks_and_troughs(t, total, sorted(d["Time"] for d in doses))
 fig.add_trace(go.Scatter(
     x=[base + timedelta(hours=p[0]) for p in peaks],
     y=[p[1] for p in peaks], mode='markers+text', name='Peaks',
@@ -202,7 +229,7 @@ fig.add_hline(y=32, line_dash="dot", line_color="green",
 fig.update_layout(
     title={
         'text': 'Interactive Dose Decay & Steady-State Build-Up',
-        'x': 0.435, 'xanchor': 'center',
+        'x': 0.5, 'xanchor': 'center',
         'y': 0.95, 'yanchor': 'top',
         'font': {'size': 30, 'color': 'black'},
         'pad': {'b': 5}
