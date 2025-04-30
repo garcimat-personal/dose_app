@@ -246,6 +246,13 @@ t1 = max(d["Time"] for d in doses) + 4 * HALF_LIFE_HOURS
 t = np.arange(t0, t1, TIME_STEP)
 x_times = [base + timedelta(hours=hh) for hh in t]
 
+# Compute 2× zoomed-in window: center half of the full span
+full_start, full_end = x_times[0], x_times[-1]
+span = full_end - full_start
+quarter = span / 4
+center = full_start + span / 2
+zoom_range = [center - quarter, center + quarter]
+
 total = np.zeros_like(t)
 fig = go.Figure()
 
@@ -255,18 +262,18 @@ for d in doses:
         total = np.maximum(total - concentration_curve(dt, mval, t), 0.0)
     curve = concentration_curve(dt, amt, t)
     total += curve
-    clock_lbl = (base + timedelta(hours=dt)).strftime("%a (%m/%d) %I:%M %p")
+    lbl = (base + timedelta(hours=dt)).strftime("%a (%m/%d) %I:%M %p")
 
     fig.add_trace(go.Scatter(
         x=x_times, y=curve, mode='lines', line=dict(dash='dash'),
-        name=f"{amt:.0f} mg @ {dt:.1f}h ({clock_lbl})",
+        name=f"{amt:.0f} mg @ {dt:.1f}h ({lbl})",
         hovertemplate='%{y:.1f} mg at %{x|%a %m/%d %I:%M %p}<extra></extra>'
     ))
 
 fig.add_trace(go.Scatter(
     x=x_times, y=total, mode='lines', line=dict(width=3, color='black'),
     name='Total',
-    hovertemplate='%{y:.1f} mg at %{x|%a %m/%d %I:%M %p}<extra></extra>'
+    hovertemplate='%{y:.1f} mg at %{x|%a %m/%d %I:%M %p}'
 ))
 
 peaks, troughs = find_peaks_and_troughs(t, total, sorted(d["Time"] for d in doses))
@@ -292,20 +299,60 @@ fig.add_hline(y=32, line_dash="dot", line_color="green",
               annotation_text="Min dose", annotation_position="top right",
               annotation_font_size=14, annotation_font_color="black")
 
+# Configure legend color and position
+if mobile:
+    legend_cfg = dict(
+        orientation='h',
+        yanchor='top',
+        y=-0.4,            # below the rangeslider
+        xanchor='center',
+        x=0.5,
+        font=dict(color='darkgrey')
+    )
+else:
+    legend_cfg = dict(font=dict(color='darkgrey'))
+
 fig.update_layout(
-    title={
-        'text': 'Interactive Dose Decay & Steady-State Build-Up',
-        'x': 0.435, 'xanchor': 'center',
-        'y': 0.95, 'yanchor': 'top',
-        'font': {'size': 30, 'color': 'black'},
-        'pad': {'b': 5}
-    },
-    font=dict(color='black'),
+    title=dict(
+        text='Interactive Dose Decay & Steady-State Build-Up',
+        x=0.435, xanchor='center',
+        y=0.95, yanchor='top',
+        font=dict(size=30, color='black'),
+        pad=dict(b=5)
+    ),
+    font=dict(color='black'),       # all non-legend text black
     showlegend=show_legend,
-    paper_bgcolor='white', plot_bgcolor='rgba(230,230,230,1)',
-    height=800, margin=dict(l=40,r=20,t=100,b=40), dragmode='pan',
-    xaxis=dict(type='date', tickformat='%a (%m/%d)<br>%I:%M %p', rangeslider=dict(visible=True)),
-    yaxis=dict(title='Amount (mg)')
+    legend=legend_cfg,
+    paper_bgcolor='white',
+    plot_bgcolor='rgba(230,230,230,1)',
+    height=800,
+    margin=dict(l=40, r=20, t=100, b=80),
+    dragmode='pan',
+    xaxis=dict(
+        type='date',
+        range=zoom_range,
+        tickformat='%a (%m/%d)<br>%I:%M %p',
+        rangeslider=dict(visible=True),
+        showgrid=True,
+        gridcolor='black',
+        gridwidth=1,
+        zeroline=True,
+        zerolinecolor='black',
+        linecolor='black',
+        tickfont=dict(color='black'),
+        title_font=dict(color='black')
+    ),
+    yaxis=dict(
+        title='Amount (mg)',
+        showgrid=True,
+        gridcolor='black',
+        gridwidth=1,
+        zeroline=True,
+        zerolinecolor='black',
+        linecolor='black',
+        tickfont=dict(color='black'),
+        title_font=dict(color='black')
+    )
 )
 
 st.plotly_chart(fig, use_container_width=True)
