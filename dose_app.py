@@ -304,7 +304,7 @@ if mobile:
     legend_cfg = dict(
         orientation='h',
         yanchor='top',
-        y=-0.4,            # below the rangeslider
+        y=-0.5,            # below the rangeslider
         xanchor='center',
         x=0.5,
         font=dict(color='darkgrey')
