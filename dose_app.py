@@ -332,7 +332,7 @@ fig.update_layout(
         text='Interactive Dose Decay & Steady-State Build-Up',
         x=0.435, xanchor='center',
         y=0.95, yanchor='top',
-        font=dict(size=(20 if mobile else 30), color='black'),
+        font=dict(size=(15 if mobile else 30), color='black'),
         pad=dict(b=5)
     ),
     font=dict(color='black'),       # all non-legend text black
