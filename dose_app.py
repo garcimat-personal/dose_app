@@ -133,8 +133,8 @@ with st.expander("Controls", expanded=True):
             st.error("Error parsing JSON.")
 
     # Toggles
-    show_legend = st.checkbox("Show legend", value=True)
-    show_edit   = st.checkbox("Edit doses table")
+    show_legend = st.checkbox("Show Legend", value=True)
+    show_edit   = st.checkbox("Edit Dose History")
 
 # ---- Editable dose table (conditional) ----
 if show_edit:
