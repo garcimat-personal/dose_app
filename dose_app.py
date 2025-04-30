@@ -329,7 +329,7 @@ else:
 
 fig.update_layout(
     title=dict(
-        text='Interactive Dose Decay & Steady-State Build-Up',
+        text=('Dose Decay & Steady-State Build-Up' if mobile else 'Interactive Dose Decay & Steady-State Build-Up'),
         x=0.435, xanchor='center',
         y=0.95, yanchor='top',
         font=dict(size=(19 if mobile else 30), color='black'),
