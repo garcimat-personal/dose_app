@@ -246,21 +246,27 @@ t1 = max(d["Time"] for d in doses) + 4 * HALF_LIFE_HOURS
 t = np.arange(t0, t1, TIME_STEP)
 x_times = [base + timedelta(hours=hh) for hh in t]
 
-# ---- compute zoom ranges ----
+# ---- compute zoom ranges centered on last dose ----
+# find the time (in hours) of the last dose
+last_dose_h = max(d["Time"] for d in doses)
+# convert to a datetime
+center_time = base + timedelta(hours=last_dose_h)
+
+# total span of data
 full_start, full_end = x_times[0], x_times[-1]
 span = full_end - full_start
-center = full_start + span / 2
 
-# desktop: 2× zoom (center half)
-half_span = span / 4
-desktop_range = [center - half_span, center + half_span]
+# desktop: 2× zoom → span/2 window (so half of full span each side)
+half_window = span / 4
 
-# mobile: 3× zoom (center third)
-third_span = span / 6
-mobile_range = [center - third_span, center + third_span]
+# mobile: 3× zoom → span/3 window (so one-sixth of full span each side)
+third_window = span / 6
 
-# pick depending on mobile toggle
-zoom_range = mobile_range if mobile else desktop_range
+# pick window based on mobile toggle
+if mobile:
+    zoom_range = [center_time - third_window, center_time + third_window]
+else:
+    zoom_range = [center_time - half_window,  center_time + half_window]
 
 total = np.zeros_like(t)
 fig = go.Figure()
