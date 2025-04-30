@@ -47,9 +47,11 @@ def find_peaks_and_troughs(t, total, dose_times):
 st.set_page_config(layout="wide")
 st.title("Interactive Dose Decay & Steady-State Build-Up")
 
-# load or init persisted doses
+# load or init persisted doses and undo stack
 if "doses" not in st.session_state:
     st.session_state.doses = load_doses()
+if "deleted_stack" not in st.session_state:
+    st.session_state.deleted_stack = []
 
 # fix t=0 to Monday, April 21, at 8:30 AM of this year
 year = datetime.now().year
@@ -57,27 +59,31 @@ base = datetime(year, 4, 21, 8, 30)
 
 # ---- Controls ----
 with st.expander("Controls", expanded=True):
-    # initialize default time to last dose if present
     if "dose_time" not in st.session_state:
         st.session_state.dose_time = max((d["Time"] for d in st.session_state.doses), default=0.0)
 
-    # Dose time input
     st.session_state.dose_time = st.number_input(
         "Dose time (h)",
         value=st.session_state.dose_time,
-        min_value=0.0,
-        step=0.1
+        min_value=0.0, step=0.1
     )
-    col1, col2, _ = st.columns([1,1,8])
-    with col1:
+    c1, c2, _, c5 = st.columns([1,1,6,1])
+    with c1:
         if st.button("Next Booster (+5h)"):
             st.session_state.dose_time += 5.0
-    with col2:
+    with c2:
         if st.button("Next Initial (+19h)"):
             st.session_state.dose_time += 19.0
+    with c5:
+        if st.button("Undo Delete"):
+            if st.session_state.deleted_stack:
+                restored = st.session_state.deleted_stack.pop()
+                st.session_state.doses.extend(restored)
+                st.session_state.doses.sort(key=lambda d: d["Time"])
+                save_doses(st.session_state.doses)
+
     dose_time = st.session_state.dose_time
 
-    # Dose amount
     dose_choice = st.selectbox("Dose type", ["Initial (40 mg)", "Booster (8 mg)", "Custom"])
     if dose_choice == "Initial (40 mg)":
         dose_amt = 40.0
@@ -86,11 +92,9 @@ with st.expander("Controls", expanded=True):
     else:
         dose_amt = st.number_input("Custom amount (mg)", min_value=0.0, step=1.0, value=10.0)
 
-    # L-Methionine
     apply_meth = st.checkbox("Apply L-Methionine to next dose?")
     meth_amt   = st.number_input("L-Methionine (mg)", min_value=0.0, step=1.0, value=5.0)
 
-    # Action buttons
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         if st.button("Add Dose"):
@@ -100,7 +104,6 @@ with st.expander("Controls", expanded=True):
                 "L-Methionine Value": meth_amt if apply_meth else 0.0
             })
             save_doses(st.session_state.doses)
-            st.session_state.dose_time = dose_time
     with c2:
         if st.button("Undo Last Dose"):
             if st.session_state.doses:
@@ -115,16 +118,17 @@ with st.expander("Controls", expanded=True):
         )
     with c4:
         if st.button("Clear All Doses"):
-            st.session_state.doses = []
+            st.session_state.deleted_stack.clear()
+            st.session_state.doses.clear()
             save_doses(st.session_state.doses)
 
-    # Upload
     uploaded = st.file_uploader("Upload doses.json to restore", type="json")
-    if uploaded:
+    if uploaded is not None:
         try:
             new = json.load(uploaded)
             if isinstance(new, list):
                 st.session_state.doses = new
+                st.session_state.deleted_stack.clear()
                 save_doses(new)
                 st.success("History restored.")
             else:
@@ -132,40 +136,78 @@ with st.expander("Controls", expanded=True):
         except:
             st.error("Error parsing JSON.")
 
-    # Toggles
     show_legend = st.checkbox("Show Legend", value=True)
     show_edit   = st.checkbox("Edit Dose History")
 
-# ---- Editable dose table (conditional) ----
+# ---- Editable dose table ----
 if show_edit:
+    # build DataFrame
     df = pd.DataFrame(st.session_state.doses)[["Time","Amount","L-Methionine Value"]].astype(float)
-    df.insert(
-        1,
-        "Date & Time",
-        df["Time"]
-          .apply(lambda x: (base + timedelta(hours=x)).strftime("%a %m/%d %-I:%M %p"))
-    )
+    # human-readable label
+    df.insert(1, "Date & Time",
+              df["Time"].apply(lambda x:
+                  (base + timedelta(hours=x)).strftime("%a %m/%d %I:%M %p")
+              ))
+    # delete checkbox
+    df.insert(0, "Delete?", False)
+
+    # hide the raw Time column
+    column_config = {
+        "Time": {"hidden": True},
+        "Delete?": {"type": "boolean"},
+        "Date & Time": {"type": "text"},
+        "Amount": {"type": "numeric"},
+        "L-Methionine Value": {"type": "numeric"}
+    }
+
     edited = st.data_editor(
         df,
+        column_config=column_config,
         num_rows="dynamic",
         key="dose_editor",
         use_container_width=True
     )
-    if not edited[["Time","Amount","L-Methionine Value"]].equals(df[["Time","Amount","L-Methionine Value"]]):
-        new_list = []
-        for _, row in edited.iterrows():
-            new_list.append({
+
+    # rebuild doses & deleted stack
+    kept = []
+    deleted = []
+    for _, row in edited.iterrows():
+        if row["Delete?"]:
+            deleted.append({
                 "Time": float(row["Time"]),
                 "Amount": float(row["Amount"]),
                 "L-Methionine Value": float(row["L-Methionine Value"])
             })
-        st.session_state.doses = new_list
-        save_doses(new_list)
+        else:
+            # recalc Time from edited Date & Time
+            parts = row["Date & Time"].split()
+            mon, day = map(int, parts[1].split("/"))
+            hour, minute = map(int, parts[2].split(":"))
+            ampm = parts[3].upper()
+            if ampm == "PM" and hour != 12:
+                hour += 12
+            elif ampm == "AM" and hour == 12:
+                hour = 0
+            dt_new = base.replace(month=mon, day=day, hour=hour, minute=minute)
+            hours_offset = max((dt_new - base).total_seconds()/3600.0, 0.0)
+
+            kept.append({
+                "Time": hours_offset,
+                "Amount": float(row["Amount"]),
+                "L-Methionine Value": float(row["L-Methionine Value"])
+            })
+
+    if deleted:
+        st.session_state.deleted_stack.append(deleted)
+
+    if kept != st.session_state.doses:
+        st.session_state.doses = kept
+        save_doses(kept)
 
 # ---- Build data for plotting ----
 doses = st.session_state.doses
 if not doses:
-    st.info("No doses yet. Use the controls above.")
+    st.info("No doses yet.")
     st.stop()
 
 t0 = min(d["Time"] for d in doses)
@@ -176,48 +218,43 @@ x_times = [base + timedelta(hours=hh) for hh in t]
 total = np.zeros_like(t)
 fig = go.Figure()
 
-# plot each dose curve
 for d in doses:
     dt, amt, mval = d["Time"], d["Amount"], d["L-Methionine Value"]
     if mval > 0:
-        neg = np.zeros_like(t)
-        mask = t >= dt
-        neg[mask] = mval * np.exp(-DECAY_CONSTANT * (t[mask] - dt))
-        total = np.maximum(total - neg, 0.0)
-    curve = concentration_curve(dt, amt, t)
-    total += curve
-    clock_lbl = (base + timedelta(hours=dt)).strftime('%a (%m/%d) %-I:%M %p')
-    legend_lbl = f"{amt:.0f} mg @ {dt:.1f}h ({clock_lbl})"
+        total = np.maximum(total - concentration_curve(dt, mval, t), 0.0)
+    total += concentration_curve(dt, amt, t)
+    clock_lbl = (base + timedelta(hours=dt)).strftime("%a (%m/%d) %I:%M %p")
+
     fig.add_trace(go.Scatter(
-        x=x_times, y=curve, mode='lines',
-        name=legend_lbl, line=dict(dash='dash'),
+        x=x_times, y=concentration_curve(dt, amt, t),
+        mode='lines', line=dict(dash='dash'),
+        name=f"{amt:.0f} mg @ {dt:.1f}h ({clock_lbl})",
         hovertemplate='%{y:.1f} mg at %{x|%a %m/%d %I:%M %p}<extra></extra>'
     ))
 
-# plot total
-total = np.maximum(total, 0.0)
 fig.add_trace(go.Scatter(
-    x=x_times, y=total, mode='lines',
-    name='Total', line=dict(width=3, color='black'),
+    x=x_times, y=total,
+    mode='lines', line=dict(width=3, color='black'),
+    name='Total',
     hovertemplate='%{y:.1f} mg at %{x|%a %m/%d %I:%M %p}<extra></extra>'
 ))
 
-# peaks & troughs
 peaks, troughs = find_peaks_and_troughs(t, total, sorted(d["Time"] for d in doses))
-fig.add_trace(go.Scatter(
-    x=[base + timedelta(hours=p[0]) for p in peaks],
-    y=[p[1] for p in peaks], mode='markers+text', name='Peaks',
-    marker=dict(color='red', size=8),
-    text=[f'{p[1]:.1f} mg' for p in peaks], textposition='top center'
-))
-fig.add_trace(go.Scatter(
-    x=[base + timedelta(hours=tr[0]) for tr in troughs],
-    y=[tr[1] for tr in troughs], mode='markers+text', name='Troughs',
-    marker=dict(color='blue', symbol='x', size=8),
-    text=[f'{tr[1]:.1f} mg' for tr in troughs], textposition='bottom center'
-))
+for x_val, y_val in peaks:
+    fig.add_trace(go.Scatter(
+        x=[base+timedelta(hours=x_val)], y=[y_val],
+        mode='markers+text', marker=dict(color='red', size=8),
+        text=[f"{y_val:.1f} mg"], textposition='top center', name='Peak',
+        showlegend=False
+    ))
+for x_val, y_val in troughs:
+    fig.add_trace(go.Scatter(
+        x=[base+timedelta(hours=x_val)], y=[y_val],
+        mode='markers+text', marker=dict(symbol='x', color='blue', size=8),
+        text=[f"{y_val:.1f} mg"], textposition='bottom center', name='Trough',
+        showlegend=False
+    ))
 
-# add threshold lines
 fig.add_hline(y=60, line_dash="dot", line_color="red",
               annotation_text="Max dose", annotation_position="top right",
               annotation_font_size=14, annotation_font_color="black")
@@ -225,41 +262,21 @@ fig.add_hline(y=32, line_dash="dot", line_color="green",
               annotation_text="Min dose", annotation_position="top right",
               annotation_font_size=14, annotation_font_color="black")
 
-# layout
 fig.update_layout(
     title={
         'text': 'Interactive Dose Decay & Steady-State Build-Up',
-        'x': 0.5, 'xanchor': 'center',
+        'x': 0.435, 'xanchor': 'center',
         'y': 0.95, 'yanchor': 'top',
         'font': {'size': 30, 'color': 'black'},
         'pad': {'b': 5}
     },
     font=dict(color='black'),
     showlegend=show_legend,
-    legend=dict(font=dict(color='rgba(0,0,0,0.7)')),
-    paper_bgcolor='white',
-    plot_bgcolor='rgba(230,230,230,1)',
-    height=800,
-    margin=dict(l=40, r=20, t=100, b=40),
-    dragmode='pan',
-    xaxis=dict(
-        title='Clock Time',
-        title_font=dict(color='black'),
-        tickfont=dict(color='black'),
-        gridcolor='rgba(0,0,0,0.1)',
-        showgrid=True,
-        type='date',
-        tickformat='%a (%m/%d)<br>%I:%M %p',
-        rangeslider=dict(visible=True),
-        range=[x_times[0], x_times[0] + timedelta(days=((t1 - t0)//24) + 1)]
-    ),
-    yaxis=dict(
-        title='Amount (mg)',
-        title_font=dict(color='black'),
-        tickfont=dict(color='black'),
-        gridcolor='rgba(0,0,0,0.1)',
-        showgrid=True
-    )
+    paper_bgcolor='white', plot_bgcolor='rgba(230,230,230,1)',
+    height=800, margin=dict(l=40,r=20,t=100,b=40), dragmode='pan',
+    xaxis=dict(type='date', tickformat='%a (%m/%d)<br>%I:%M %p',
+               rangeslider=dict(visible=True)),
+    yaxis=dict(title='Amount (mg)')
 )
 
 st.plotly_chart(fig, use_container_width=True)
