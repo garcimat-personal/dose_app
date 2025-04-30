@@ -325,7 +325,7 @@ fig.update_layout(
     legend=legend_cfg,
     paper_bgcolor='white',
     plot_bgcolor='rgba(230,230,230,1)',
-    height=800,
+    height= (1200 if mobile else 800),
     margin=dict(l=40, r=20, t=100, b=80),
     dragmode='pan',
     xaxis=dict(
