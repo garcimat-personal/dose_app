@@ -341,7 +341,7 @@ fig.update_layout(
     paper_bgcolor='white',
     plot_bgcolor='rgba(230,230,230,1)',
     height= (1700 if mobile else 800),
-    margin=dict(l=40, r=20, t=100, b=80),
+    margin=dict(l=40, r=20, t=(140 if mobile else 100), b=80),
     dragmode='pan',
     xaxis=dict(
         type='date',
