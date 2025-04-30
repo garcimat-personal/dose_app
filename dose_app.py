@@ -246,12 +246,21 @@ t1 = max(d["Time"] for d in doses) + 4 * HALF_LIFE_HOURS
 t = np.arange(t0, t1, TIME_STEP)
 x_times = [base + timedelta(hours=hh) for hh in t]
 
-# Compute 2× zoomed-in window: center half of the full span
+# ---- compute zoom ranges ----
 full_start, full_end = x_times[0], x_times[-1]
 span = full_end - full_start
-quarter = span / 4
 center = full_start + span / 2
-zoom_range = [center - quarter, center + quarter]
+
+# desktop: 2× zoom (center half)
+half_span = span / 4
+desktop_range = [center - half_span, center + half_span]
+
+# mobile: 3× zoom (center third)
+third_span = span / 6
+mobile_range = [center - third_span, center + third_span]
+
+# pick depending on mobile toggle
+zoom_range = mobile_range if mobile else desktop_range
 
 total = np.zeros_like(t)
 fig = go.Figure()
