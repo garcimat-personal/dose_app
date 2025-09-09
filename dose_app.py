@@ -81,7 +81,7 @@ with st.expander("Controls", expanded=not mobile):
         if st.button("Custom"):
             st.session_state.dose_time += st.number_input(
                 "Set custom dose time (h)",
-                value=st.session_state.dose_time,
+                value=6.0,
                 min_value=0.0, step=0.1
             )
         if st.button("Undo Delete"):
@@ -102,7 +102,7 @@ with st.expander("Controls", expanded=not mobile):
             if st.button("Custom"):
                 st.session_state.dose_time += st.number_input(
                     "Set custom dose time (h)",
-                    value=st.session_state.dose_time,
+                    value=6.0,
                     min_value=0.0, step=0.1
                 )
         with c5:
