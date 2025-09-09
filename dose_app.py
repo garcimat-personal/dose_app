@@ -55,7 +55,7 @@ if "deleted_stack" not in st.session_state:
 
 # base datetime for t=0: Monday April 21 at 8:30
 year = datetime.now().year
-base = datetime(year, 4, 21, 8, 30)
+base = datetime(year, 9, 9, 8, 30)
 
 # Mobile toggle
 mobile = st.checkbox("Mobile view")
