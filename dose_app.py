@@ -310,7 +310,7 @@ for x_val, y_val in troughs:
 fig.add_hline(y=60, line_dash="dot", line_color="red",
               annotation_text="Max dose", annotation_position="top right",
               annotation_font_size=14, annotation_font_color="black")
-fig.add_hline(y=32, line_dash="dot", line_color="green",
+fig.add_hline(y=32.5, line_dash="dot", line_color="green",
               annotation_text="Min dose", annotation_position="top right",
               annotation_font_size=14, annotation_font_color="black")
 
