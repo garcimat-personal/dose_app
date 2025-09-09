@@ -82,7 +82,7 @@ with st.expander("Controls", expanded=not mobile):
                 "Set custom dose time (h)",
                 min_value=0.0, step=0.1, value=6.0,
             )
-        if st.button("Custom"):
+        if st.button("Add Custom Time"):
             st.session_state.dose_time += dose_time_amt
         if st.button("Undo Delete"):
             if st.session_state.deleted_stack:
@@ -103,7 +103,7 @@ with st.expander("Controls", expanded=not mobile):
                 "Set custom dose time (h)",
                 min_value=0.0, step=0.1, value=6.0,
             )
-            if st.button("Custom"):
+            if st.button("Add Custom Time"):
                 st.session_state.dose_time += dose_time_amt
         with c5:
             if st.button("Undo Delete"):
