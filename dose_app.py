@@ -91,7 +91,7 @@ with st.expander("Controls", expanded=not mobile):
                 st.session_state.doses.sort(key=lambda d: d["Time"])
                 save_doses(st.session_state.doses)
     else:
-        c1, c2, c3, _, c5 = st.columns([1,1,6,1])
+        c1, c2, c3, _, c5 = st.columns([1,1,1,6,1])
         with c1:
             if st.button("Next Booster (+5h)"):
                 st.session_state.dose_time += 5.0
