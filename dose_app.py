@@ -55,7 +55,7 @@ if "deleted_stack" not in st.session_state:
 
 # base datetime for t=0: Monday April 21 at 8:30
 year = datetime.now().year
-base = datetime(year, 9, 9, 8, 30)
+base = datetime(year, 9, 9, 10, 0)
 
 # Mobile toggle
 mobile = st.checkbox("Mobile view")
@@ -69,7 +69,7 @@ with st.expander("Controls", expanded=not mobile):
     st.session_state.dose_time = st.number_input(
         "Dose time (h)",
         value=st.session_state.dose_time,
-        min_value=0.0, step=0.1
+        min_value=0.0, step=0.5
     )
     dose_time = st.session_state.dose_time
 
@@ -80,7 +80,7 @@ with st.expander("Controls", expanded=not mobile):
             st.session_state.dose_time += 19.0
         dose_time_amt = st.number_input(
                 "Set custom dose time (h)",
-                min_value=0.0, step=0.1, value=6.0,
+                min_value=0.0, step=0.5, value=8.0,
             )
         if st.button("Add Custom Time"):
             st.session_state.dose_time += dose_time_amt
@@ -101,7 +101,7 @@ with st.expander("Controls", expanded=not mobile):
         with c3:
             dose_time_amt = st.number_input(
                 "Set custom dose time (h)",
-                min_value=0.0, step=0.1, value=6.0,
+                min_value=0.0, step=0.5, value=8.0,
             )
             if st.button("Add Custom Time"):
                 st.session_state.dose_time += dose_time_amt
