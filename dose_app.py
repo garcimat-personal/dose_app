@@ -78,6 +78,12 @@ with st.expander("Controls", expanded=not mobile):
             st.session_state.dose_time += 5.0
         if st.button("Next Initial (+19h)"):
             st.session_state.dose_time += 19.0
+        if st.button("Custom"):
+            st.session_state.dose_time = st.number_input(
+                "Set custom dose time (h)",
+                value=st.session_state.dose_time,
+                min_value=0.0, step=0.1
+            )
         if st.button("Undo Delete"):
             if st.session_state.deleted_stack:
                 restored = st.session_state.deleted_stack.pop()
