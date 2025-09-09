@@ -78,11 +78,11 @@ with st.expander("Controls", expanded=not mobile):
             st.session_state.dose_time += 5.0
         if st.button("Next Initial (+19h)"):
             st.session_state.dose_time += 19.0
-        if st.button("Custom"):
-            dose_time_amt = st.number_input(
+        dose_time_amt = st.number_input(
                 "Set custom dose time (h)",
                 min_value=0.0, step=0.1, value=6.0,
             )
+        if st.button("Custom"):
             st.session_state.dose_time += dose_time_amt
         if st.button("Undo Delete"):
             if st.session_state.deleted_stack:
@@ -99,11 +99,11 @@ with st.expander("Controls", expanded=not mobile):
             if st.button("Next Initial (+19h)"):
                 st.session_state.dose_time += 19.0
         with c3:
+            dose_time_amt = st.number_input(
+                "Set custom dose time (h)",
+                min_value=0.0, step=0.1, value=6.0,
+            )
             if st.button("Custom"):
-                dose_time_amt = st.number_input(
-                    "Set custom dose time (h)",
-                    min_value=0.0, step=0.1, value=6.0,
-                )
                 st.session_state.dose_time += dose_time_amt
         with c5:
             if st.button("Undo Delete"):
